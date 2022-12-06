@@ -8,7 +8,7 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 
-	"github.com/aler9/gortsplib/pkg/rtptimedec"
+	"github.com/aliveyun/gortsplib/pkg/rtptimedec"
 )
 
 // ErrMorePacketsNeeded is returned when more packets are needed.

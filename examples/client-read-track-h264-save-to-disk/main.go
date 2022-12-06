@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/aler9/gortsplib"
-	"github.com/aler9/gortsplib/pkg/url"
+	"github.com/aliveyun/gortsplib"
+	"github.com/aliveyun/gortsplib/pkg/url"
 )
 
 // This example shows how to

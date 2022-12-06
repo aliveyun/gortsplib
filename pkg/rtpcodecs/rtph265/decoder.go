@@ -7,7 +7,7 @@ import (
 
 	"github.com/pion/rtp"
 
-	"github.com/aler9/gortsplib/pkg/rtptimedec"
+	"github.com/aliveyun/gortsplib/pkg/rtptimedec"
 )
 
 const (

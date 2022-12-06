@@ -5,23 +5,22 @@ import (
 	"log"
 	"time"
 
-
-	"github.com/aler9/gortsplib/pkg/url"
+	"github.com/aliveyun/gortsplib/pkg/url"
 	//"github.com/golang/protobuf/ptypes/any"
 	"bytes"
 	"fmt"
-	"github.com/aler9/gortsplib/pkg/h264"
-	"github.com/aler9/gortsplib/pkg/h265"
-	"github.com/aler9/gortsplib/pkg/av"
+	"github.com/aliveyun/gortsplib/pkg/av"
+	"github.com/aliveyun/gortsplib/pkg/h264"
+	"github.com/aliveyun/gortsplib/pkg/h265"
 	//"os"
-	"strings"
 	"github.com/pion/rtp"
+	"strings"
 )
 
 // Packet stores compressed audio/video data.
 type Packet struct {
-	IsKeyFrame      bool          // video packet is key frame
-	Idx             int8          // stream index in container format
+	IsKeyFrame      bool // video packet is key frame
+	Idx             int8 // stream index in container format
 	VideoCodec      av.CodecType
 	CompositionTime time.Duration // packet presentation time minus decode time for H264 B-Frame
 	Time            time.Duration // packet decode time
@@ -38,19 +37,16 @@ type RTSPClientOptions struct {
 }
 
 type AVDecode interface {
-
 	Decode(pkt *rtp.Packet) ([][]byte, time.Duration, error)
-
-
 }
 type AUDecode interface {
 	Decode(pkt *rtp.Packet) ([]byte, time.Duration, error)
 }
 
 type RTSPClient struct {
-	tracks       Tracks
-	audioTrackId int
-	videoTrackId int
+	tracks              Tracks
+	audioTrackId        int
+	videoTrackId        int
 	OutgoingPacketQueue chan *Packet
 	Signals             chan int
 	//audioCodec          av.CodecType
@@ -59,12 +55,12 @@ type RTSPClient struct {
 	//pps []byte
 	//track              interface{}
 	//file *os.File
-	Av   AVDecode
-	Au   AUDecode
+	Av AVDecode
+	Au AUDecode
 	//Tracks  gortsplib.Tracks
-	Avtrack     interface{}
-	Autrack     interface{}
-	conn           *Client
+	Avtrack interface{}
+	Autrack interface{}
+	conn    *Client
 	//OnPacketRTP func(*ClientOnPacketRTPCtx)
 	// called when receiving a RTCP packet.
 	//OnPacketRTCP func(*ClientOnPacketRTCPCtx)
@@ -72,13 +68,13 @@ type RTSPClient struct {
 
 func Dial(options RTSPClientOptions) (*RTSPClient, error) {
 	client := &RTSPClient{
-		audioTrackId:-1,
-		videoTrackId:-1,
+		audioTrackId:        -1,
+		videoTrackId:        -1,
 		Signals:             make(chan int, 100),
 		OutgoingPacketQueue: make(chan *Packet, 3000),
 	}
 	//client.file, _ = os.Create("D://7777168.h264")
-	client.conn= &Client{
+	client.conn = &Client{
 		// called when a RTP packet arrives
 		OnPacketRTP: func(ctx *ClientOnPacketRTPCtx) {
 			//log.Printf("RTP packet from track %d, payload type %d\n", ctx.TrackID, ctx.Packet.Header.PayloadType)
@@ -99,14 +95,14 @@ func Dial(options RTSPClientOptions) (*RTSPClient, error) {
 		return nil, err
 	}
 	// connect to the server
-	err = 	client.conn.Start(u.Scheme, u.Host)
+	err = client.conn.Start(u.Scheme, u.Host)
 	if err != nil {
 		return nil, err
 	}
 	//defer 	client.C.Close()
 	//var baseURL  *url.URL
 	// find published tracks
-	tracks, baseURL, _, err := 	client.conn.Describe(u)
+	tracks, baseURL, _, err := client.conn.Describe(u)
 	if err != nil {
 		return nil, err
 	}
@@ -132,11 +128,11 @@ func Dial(options RTSPClientOptions) (*RTSPClient, error) {
 
 	client.SetTracks()
 	// setup and read all tracks
-	err = 	client.conn.SetupAndPlay(tracks, baseURL)
+	err = client.conn.SetupAndPlay(tracks, baseURL)
 	if err != nil {
 		return nil, err
 	}
-   // go 	client.C.Wait()
+	// go 	client.C.Wait()
 	return client, nil
 }
 
@@ -150,19 +146,17 @@ func (p *RTSPClient) RTPDemuxer(TrackID int, pkt *rtp.Packet) ([]*Packet, bool) 
 
 	if TrackID == p.audioTrackId {
 
-		
 		op, _, err := p.Au.Decode(pkt)
 		if err != nil {
 			log.Println("multiple video tracks are not supported")
 			return nil, false
 		}
 
-		
 		var retmap Packet
-		switch  p.Autrack.(type) {
+		switch p.Autrack.(type) {
 		case *TrackG711:
-			retmap.VideoCodec=av.PCM_ALAW	
-			retmap.Data= append(retmap.Data ,op...)
+			retmap.VideoCodec = av.PCM_ALAW
+			retmap.Data = append(retmap.Data, op...)
 		}
 		p.OutgoingPacketQueue <- &retmap
 
@@ -173,22 +167,22 @@ func (p *RTSPClient) RTPDemuxer(TrackID int, pkt *rtp.Packet) ([]*Packet, bool) 
 		nalus, _, err := p.Av.Decode(pkt)
 		if err != nil {
 			return nil, false
-			log.Println("multiple video tracks are not supported", nalus,flag)
+			log.Println("multiple video tracks are not supported", nalus, flag)
 		}
-		switch  p.Avtrack.(type) {
+		switch p.Avtrack.(type) {
 		case *TrackH265:
-			retmap.VideoCodec=av.H265
+			retmap.VideoCodec = av.H265
 			nalus, flag = p.h265RemuxNALUs(nalus, p.Avtrack.(*TrackH265))
 		case *TrackH264:
-			retmap.VideoCodec=av.H264
-			nalus,flag = p.h264RemuxNALUs(nalus,p.Avtrack.(*TrackH264))
+			retmap.VideoCodec = av.H264
+			nalus, flag = p.h264RemuxNALUs(nalus, p.Avtrack.(*TrackH264))
 		}
 		//nalus,_ = p.h264RemuxNALUs(nalus,p.Avtrack.(*gortsplib.TrackH264))
-		
-		retmap.IsKeyFrame =flag
+
+		retmap.IsKeyFrame = flag
 		for _, nalu := range nalus {
 			nalu = append([]byte{0, 0, 0, 1}, bytes.Join([][]byte{nalu[0:]}, []byte{0, 0, 0, 1})...)
-			retmap.Data= append(retmap.Data ,nalu...)
+			retmap.Data = append(retmap.Data, nalu...)
 		}
 		//p.file.Write(retmap.Data)
 		p.OutgoingPacketQueue <- &retmap
@@ -197,8 +191,6 @@ func (p *RTSPClient) RTPDemuxer(TrackID int, pkt *rtp.Packet) ([]*Packet, bool) 
 	}
 	return nil, false
 }
-
-
 
 // remux is needed to fix corrupted streams and make streams
 // compatible with all protocols.
@@ -217,7 +209,7 @@ func (t *RTSPClient) h264RemuxNALUs(nalus [][]byte, track *TrackH264) (filteredN
 			if !addSPSPPS {
 				addSPSPPS = true
 				n += 2
-				flag=addSPSPPS
+				flag = addSPSPPS
 			}
 		}
 		n++
@@ -267,7 +259,7 @@ func (t *RTSPClient) h265RemuxNALUs(nalus [][]byte, track *TrackH265) (filteredN
 			if !addSPSPPS {
 				addSPSPPS = true
 				n += 2
-				flag=addSPSPPS
+				flag = addSPSPPS
 			}
 		}
 		n++
@@ -299,7 +291,8 @@ func (t *RTSPClient) h265RemuxNALUs(nalus [][]byte, track *TrackH265) (filteredN
 
 	return filteredNALUs, flag
 }
-//	Decode [] AVDecode `json:"-"`
+
+// Decode [] AVDecode `json:"-"`
 func (p *RTSPClient) SetTracks() error {
 	//p.Decode = make([]AVDecode, len(p.tracks))
 	for trackId, track := range p.tracks {

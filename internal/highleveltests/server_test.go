@@ -16,8 +16,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/aler9/gortsplib"
-	"github.com/aler9/gortsplib/pkg/base"
+	"github.com/aliveyun/gortsplib"
+	"github.com/aliveyun/gortsplib/pkg/base"
 )
 
 var serverCert = []byte(`-----BEGIN CERTIFICATE-----

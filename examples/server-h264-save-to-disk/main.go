@@ -5,9 +5,9 @@ import (
 	"log"
 	"sync"
 
-	"github.com/aler9/gortsplib"
-	"github.com/aler9/gortsplib/pkg/base"
-	"github.com/aler9/gortsplib/pkg/rtpcodecs/rtph264"
+	"github.com/aliveyun/gortsplib"
+	"github.com/aliveyun/gortsplib/pkg/base"
+	"github.com/aliveyun/gortsplib/pkg/rtpcodecs/rtph264"
 )
 
 // This example shows how to
