@@ -6,7 +6,6 @@ import (
 	"log"
 	//"os"
 	"time"
-
 	"bytes"
 	"github.com/aliveyun/gortsplib/pkg/av"
 	"github.com/aliveyun/gortsplib/pkg/formats"
@@ -44,9 +43,10 @@ type AUDecode interface {
 }
 
 type RTSPClient struct {
-	medias              media.Medias
-	audioTrackId        int
-	videoTrackId        int
+	medias       media.Medias
+	audioTrackId int
+	videoTrackId int
+	//waitSend bool
 	OutgoingPacketQueue chan *Packet
 	Signals             chan int
 	//audioCodec          av.CodecType
@@ -72,8 +72,9 @@ func Dial(options RTSPClientOptions) (*RTSPClient, error) {
 
 	// Client allows to set additional client options
 	client := &RTSPClient{
-		audioTrackId:        -1,
-		videoTrackId:        -1,
+		audioTrackId: -1,
+		videoTrackId: -1,
+		//waitSend: true,
 		Signals:             make(chan int, 100),
 		OutgoingPacketQueue: make(chan *Packet, 3000),
 	}
@@ -136,13 +137,13 @@ func Dial(options RTSPClientOptions) (*RTSPClient, error) {
 	}
 
 	client.conn.OnPacketRTPAny(func(medi *media.Media, forma formats.Format, pkt *rtp.Packet) {
-		//log.Printf("RTP packet from media %v\n", forma)
+
 		client.RTPDemuxer(medi, forma, pkt)
 	})
 
 	// called when a RTCP packet arrives
 	client.conn.OnPacketRTCPAny(func(medi *media.Media, pkt rtcp.Packet) {
-		//log.Printf("RTCP packet from media %v, type %T\n", medi, pkt)
+		log.Printf("RTCP packet from media %v, type %T\n", medi, pkt)
 	})
 	_, err = client.conn.Play(nil)
 	if err != nil {
@@ -186,7 +187,7 @@ func (p *RTSPClient) RTPDemuxer(medi *media.Media, forma formats.Format, pkt *rt
 
 	} else if "video" == medi.Type {
 
-		var flag bool
+		flag := false
 		var retmap Packet
 		nalus, _, err := p.Av.Decode(pkt)
 		if err != nil {
@@ -206,18 +207,28 @@ func (p *RTSPClient) RTPDemuxer(medi *media.Media, forma formats.Format, pkt *rt
 
 		retmap.IsKeyFrame = flag
 		for _, nalu := range nalus {
+
+			typ := h265.NALUType((nalu[0] & 0x7E) >> 1)
+			switch typ {
+			case h265.NALUType_PREFIX_SEI_NUT, h265.NALUType_SUFFIX_SEI_NUT:
+				// remove since they're automatically added
+				continue
+			}
 			nalu = append([]byte{0, 0, 0, 1}, bytes.Join([][]byte{nalu[0:]}, []byte{0, 0, 0, 1})...)
 			retmap.Data = append(retmap.Data, nalu...)
 		}
 		retmap.Time = pkt.Timestamp / 90
+
 		//log.Println("multiple video tracks  retmap.Time",retmap.Time)
 		if len(retmap.Data) > 0 {
 			retmap.Idx = int8(p.videoTrackId)
 			p.OutgoingPacketQueue <- &retmap
-		//	_, _ = f.Write(retmap.Data)
+			//_, _ = f.Write(retmap.Data)
+			//fmt.Println("lflfllf",len(retmap.Data))
+			//f.Close()
+			//panic("kkk")
 		}
 
-	
 	}
 	return nil, false
 }
@@ -280,23 +291,22 @@ func (t *RTSPClient) h264RemuxNALUs(nalus [][]byte, format *formats.H264) (filte
 // (code & 0x7E)>>1
 func (t *RTSPClient) h265RemuxNALUs(nalus [][]byte, format *formats.H265) (filteredNALUs [][]byte, flag bool) {
 	addSPSPPS := false
-	n := len(nalus)
+	n := 0
+	//havePPS := false
 	for _, nalu := range nalus {
-		typ := h265.NALUType((nalu[0] & 0x7E) >> 1) //
-		if typ == h265.NALUType_SPS_NUT || typ == h265.NALUType_PPS_NUT || (typ >= 16 && 23 >= typ) {
-			if typ >= 16 && 23 >= typ {
-				addSPSPPS = true
-				n += 3
-
-			}
-			flag = true
-
-			break
+		typ := h265.NALUType((nalu[0] & 0x7E) >> 1)
+		//typ := h265.NALUType((nalu[0] & 0x7E) >> 1) // typ == h265.NALUType_SPS_NUT || typ == h265.NALUType_PPS_NUT ||  (typ >= 16 && 23 >= typ)
+		if typ == h265.NALUType_VPS_NUT || typ == h265.NALUType_SPS_NUT || typ == h265.NALUType_PPS_NUT {
+			//havePPS = true
+			continue
+		} else if typ >= 16 && typ >= 23 {
+			addSPSPPS = true
+			n += 3
+			flag = addSPSPPS
 		}
-
+		n++
 	}
 
-	//fmt.Println("Llll",addSPSPPS,flag,n)
 	if n == 0 {
 		return nil, flag
 	}
@@ -304,21 +314,19 @@ func (t *RTSPClient) h265RemuxNALUs(nalus [][]byte, format *formats.H265) (filte
 	i := 0
 
 	if addSPSPPS {
-
 		filteredNALUs[0], filteredNALUs[1], filteredNALUs[2] = format.SafeParams()
-		//_, filteredNALUs[0], filteredNALUs[1] = format.SafeParams()
 		i = 3
-
 	}
 
 	for _, nalu := range nalus {
-		// typ := h265.NALUType((nalu[0] & 0x7E) >> 1)
-		// switch typ {
-		// case h265.NALUType_SPS_NUT, h265.NALUType_PPS_NUT:
-		// 	// remove since they're automatically added
-		// 	continue
+		typ := h265.NALUType((nalu[0] & 0x7E) >> 1)
+		switch typ {
+		case h265.NALUType_VPS_NUT, h265.NALUType_SPS_NUT, h265.NALUType_PPS_NUT:
+			// remove since they're automatically added
+			continue
 
-		// }
+		}
+
 		filteredNALUs[i] = nalu
 		i++
 	}

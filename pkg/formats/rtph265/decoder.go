@@ -68,9 +68,7 @@ func (d *Decoder) Decode(pkt *rtp.Packet) ([][]byte, time.Duration, error) {
 	switch typ {
 	case h265.NALUType_AggregationUnit:
 		d.fragments = d.fragments[:0] // discard pending fragments
-
 		payload := pkt.Payload[2:]
-
 		for len(payload) > 0 {
 			if len(payload) < 2 {
 				return nil, 0, fmt.Errorf("invalid aggregation unit (invalid size)")
