@@ -194,7 +194,6 @@ func (p *RTSPClient) RTPDemuxer(medi *media.Media, forma formats.Format, pkt *rt
 			//log.Printf("multiple video tracks are not supported flag=%d TrackID=%d ", flag, medi.Type)
 			return nil, false
 		}
-
 		switch forma.(type) {
 		case *formats.H265:
 			retmap.VideoCodec = av.H265
@@ -208,12 +207,30 @@ func (p *RTSPClient) RTPDemuxer(medi *media.Media, forma formats.Format, pkt *rt
 		retmap.IsKeyFrame = flag
 		for _, nalu := range nalus {
 
-			typ := h265.NALUType((nalu[0] & 0x7E) >> 1)
+			/*typ := h265.NALUType((nalu[0] & 0x7E) >> 1)
 			switch typ {
 			case h265.NALUType_PREFIX_SEI_NUT, h265.NALUType_SUFFIX_SEI_NUT:
 				// remove since they're automatically added
 				continue
+			}*/
+			if _,ok:=forma.(*formats.H264);ok{
+				typ := h264.NALUType(nalu[0] & 0x1F)
+				switch typ {
+				case h264.NALUTypeSEI:
+					// remove since they're automatically added
+					continue
+				}
+
+			}else if _,ok:=forma.(*formats.H265);ok {
+				typ := h265.NALUType((nalu[0] & 0x7E) >> 1)
+				switch typ {
+				case h265.NALUType_PREFIX_SEI_NUT, h265.NALUType_SUFFIX_SEI_NUT:
+					// remove since they're automatically added
+					continue
+				}	
 			}
+		
+
 			nalu = append([]byte{0, 0, 0, 1}, bytes.Join([][]byte{nalu[0:]}, []byte{0, 0, 0, 1})...)
 			retmap.Data = append(retmap.Data, nalu...)
 		}
@@ -235,7 +252,7 @@ func (p *RTSPClient) RTPDemuxer(medi *media.Media, forma formats.Format, pkt *rt
 
 // remux is needed to fix corrupted streams and make streams
 // compatible with all protocols.
-func (t *RTSPClient) h264RemuxNALUs(nalus [][]byte, format *formats.H264) (filteredNALUs [][]byte, flag bool) {
+func (t *RTSPClient) h264RemuxNALUsEx(nalus [][]byte, format *formats.H264) (filteredNALUs [][]byte, flag bool) {
 	addSPSPPS := false
 	n := len(nalus)
 	for _, nalu := range nalus {
@@ -243,7 +260,7 @@ func (t *RTSPClient) h264RemuxNALUs(nalus [][]byte, format *formats.H264) (filte
 		if typ == h264.NALUTypeSPS || typ == h264.NALUTypePPS || typ == h264.NALUTypeIDR {
 			if typ >= 1 && 5 >= typ {
 				addSPSPPS = true
-				n += 3
+				n += 2
 			}
 			flag = true
 			break
@@ -284,6 +301,50 @@ func (t *RTSPClient) h264RemuxNALUs(nalus [][]byte, format *formats.H264) (filte
 	// 	filteredNALUs[i] = nalu
 	// 	i++
 	// }
+
+	return filteredNALUs, flag
+}
+func (t *RTSPClient) h264RemuxNALUs(nalus [][]byte, format *formats.H264) (filteredNALUs [][]byte, flag bool) {
+	addSPSPPS := false
+	n := 0
+	//havePPS := false
+	for _, nalu := range nalus {
+		typ := h264.NALUType(nalu[0] & 0x1F) //typ >= 1 && 5 >= typ
+		if typ == h264.NALUTypeSPS || typ == h264.NALUTypePPS {
+			//havePPS = true
+			continue
+		} else if typ == h264.NALUTypeIDR  {
+			addSPSPPS = true
+			n += 2
+			flag = addSPSPPS	
+		}
+		n++
+		
+	}
+
+	if n == 0 {
+		return nil, flag
+	}
+	filteredNALUs = make([][]byte, n)
+	i := 0
+   
+	if addSPSPPS {
+		filteredNALUs[0], filteredNALUs[1] = format.SafeParams()
+		i = 2
+	}
+
+	for _, nalu := range nalus {
+		typ := h264.NALUType(nalu[0] & 0x1F)
+		switch typ {
+		case h264.NALUTypeSPS,h264.NALUTypePPS:
+			// remove since they're automatically added
+			continue
+
+		}
+
+		filteredNALUs[i] = nalu
+		i++
+	}
 
 	return filteredNALUs, flag
 }
